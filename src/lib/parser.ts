@@ -1,89 +1,138 @@
 export interface ParsedEmail {
   sender: string;
+  senderDomain: string;
   subject: string;
   date: string;
   body: string;
   urls: string[];
   emails: string[];
   domains: string[];
+  ipUrls: string[];
 }
 
 export function parseEmail(rawContent: string): ParsedEmail {
   // 1. Separate headers and body
-  // Emails typically separate headers and body with a double newline
-  const splitPoint = rawContent.indexOf('\n\n') !== -1 ? rawContent.indexOf('\n\n') : rawContent.indexOf('\r\n\r\n');
-  
+  const doubleNewLineIndex = rawContent.indexOf("\n\n");
+  const windowsNewLineIndex = rawContent.indexOf("\r\n\r\n");
+
+  let splitPoint = -1;
+
+  if (doubleNewLineIndex !== -1) {
+    splitPoint = doubleNewLineIndex;
+  } else if (windowsNewLineIndex !== -1) {
+    splitPoint = windowsNewLineIndex;
+  }
+
   let headers = rawContent;
   let body = "";
-  
+
   if (splitPoint !== -1) {
     headers = rawContent.substring(0, splitPoint);
     body = rawContent.substring(splitPoint).trim();
   } else {
-    // If we can't find a clear split, we'll just treat the whole thing as body and try to extract what we can
     body = rawContent;
   }
 
-  // 2. Extract Headers using Regex
+  // 2. Extract email headers
   const senderMatch = headers.match(/^From:\s*(.*)$/im);
   const subjectMatch = headers.match(/^Subject:\s*(.*)$/im);
   const dateMatch = headers.match(/^Date:\s*(.*)$/im);
 
-  const sender = senderMatch ? senderMatch[1].trim() : "Unknown Sender";
-  const subject = subjectMatch ? subjectMatch[1].trim() : "No Subject";
-  const date = dateMatch ? dateMatch[1].trim() : "Unknown Date";
+  const sender = senderMatch
+    ? senderMatch[1].trim()
+    : "Unknown Sender";
 
-  // 3. Extract artifacts from body
-  // URL Regex (matches http, https, and www)
+  const emailRegex =
+    /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+
+  const senderEmailMatch = sender.match(emailRegex);
+  const senderDomain = senderEmailMatch && senderEmailMatch[0].includes("@")
+    ? senderEmailMatch[0].split("@")[1].toLowerCase()
+    : "unknown";
+
+  const subject = subjectMatch
+    ? subjectMatch[1].trim()
+    : "No Subject";
+
+  const date = dateMatch
+    ? dateMatch[1].trim()
+    : "Unknown Date";
+
+
+  // 3. Extract URLs
   const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
-  const urls = Array.from(body.matchAll(urlRegex)).map(m => m[0]);
 
-  // Email Regex
-  const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
-  const emails = Array.from(body.matchAll(emailRegex)).map(m => m[0]);
-  
-  // Also check sender for email address if it's in a format like "Name <email@domain.com>"
+  const urls = Array.from(body.matchAll(urlRegex))
+    .map((match) => match[0]);
+
+
+  // 4. Extract emails
+  const emails = Array.from(body.matchAll(emailRegex))
+    .map((match) => match[0]);
+
+
+  // Check sender for email address
   if (sender !== "Unknown Sender") {
     const senderEmailMatch = sender.match(emailRegex);
+
     if (senderEmailMatch) {
       emails.push(...senderEmailMatch);
     }
   }
 
-  // Deduplicate URLs and Emails
+
+  // 5. Remove duplicates
   const uniqueUrls = [...new Set(urls)];
   const uniqueEmails = [...new Set(emails)];
 
-  // 4. Extract Domains from URLs and Emails
+
+  // 6. Extract domains
   const domains: string[] = [];
-  
-  uniqueUrls.forEach(url => {
+  const ipUrls: string[] = [];
+
+
+  uniqueUrls.forEach((url) => {
     try {
-      // Add http protocol if missing for URL parsing
-      const urlToParse = url.startsWith('http') ? url : `http://${url}`;
+      const urlToParse = url.startsWith("http")
+        ? url
+        : `http://${url}`;
+
       const urlObj = new URL(urlToParse);
-      domains.push(urlObj.hostname);
-    } catch (e) {
+      const hostname = urlObj.hostname.toLowerCase();
+
+      domains.push(hostname);
+
+      if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
+        ipUrls.push(url);
+      }
+    } catch {
       // Ignore invalid URLs
     }
   });
 
-  uniqueEmails.forEach(email => {
-    const parts = email.split('@');
+
+  uniqueEmails.forEach((email) => {
+    const parts = email.split("@");
+
     if (parts.length === 2) {
       domains.push(parts[1]);
     }
   });
 
+
   const uniqueDomains = [...new Set(domains)];
 
+
+  // 7. Return parsed email object
   return {
     sender,
+    senderDomain,
     subject,
     date,
     body,
     urls: uniqueUrls,
     emails: uniqueEmails,
-    domains: uniqueDomains
+    domains: uniqueDomains,
+    ipUrls,
   };
 }

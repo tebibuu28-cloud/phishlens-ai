@@ -1,16 +1,16 @@
 import { useLocation, Link } from "react-router-dom";
-import { ShieldAlert, CheckCircle, AlertTriangle, Link as LinkIcon, Mail } from "lucide-react";
+import { ShieldAlert, CheckCircle, AlertTriangle, Link as LinkIcon, Mail, Copy, DownloadCloud } from "lucide-react";
 import { RiskScoreGauge } from "@/components/shared/RiskScoreGauge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ParsedEmail } from "@/lib/parser";
-import { AnalysisResult } from "@/lib/detector";
+import type { ParsedEmail } from "@/lib/parser";
+import type { AnalysisResult } from "@/lib/detector";
 
 export function Results() {
   const location = useLocation();
-  const state = location.state as { parsedData: ParsedEmail; analysisResult: AnalysisResult } | null;
+  const state = location.state as { parsedData: ParsedEmail; analysisResult: AnalysisResult; savedAnalysis?: { created_at: string | null } } | null;
 
   if (!state) {
     return (
@@ -29,6 +29,41 @@ export function Results() {
 
   const { parsedData, analysisResult } = state;
 
+  const reportPayload = {
+    sender: parsedData.sender,
+    senderDomain: parsedData.senderDomain,
+    subject: parsedData.subject,
+    date: parsedData.date,
+    score: analysisResult.score,
+    riskLevel: analysisResult.riskLevel,
+    reasons: analysisResult.reasons,
+    recommendations: analysisResult.recommendations,
+    urls: parsedData.urls,
+    domains: parsedData.domains,
+    ipUrls: parsedData.ipUrls,
+  };
+
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(reportPayload, null, 2));
+      alert("Report copied to clipboard.");
+    } catch {
+      alert("Unable to copy report. Please try again.");
+    }
+  };
+
+  const downloadReport = () => {
+    const blob = new Blob([JSON.stringify(reportPayload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `phishlens-report-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container max-w-6xl mx-auto py-12 px-4 sm:px-6 space-y-8 animate-in fade-in duration-700">
       
@@ -39,6 +74,11 @@ export function Results() {
           <p className="text-muted-foreground">
             Subject: <span className="text-white font-medium">{parsedData.subject}</span>
           </p>
+          {state?.savedAnalysis?.created_at ? (
+            <p className="text-sm text-muted-foreground mt-2">
+              Saved {new Date(state.savedAnalysis.created_at).toLocaleString()}
+            </p>
+          ) : null}
         </div>
         <Button asChild variant="outline">
           <Link to="/analyzer">Analyze Another Email</Link>
@@ -59,6 +99,36 @@ export function Results() {
                 {analysisResult.riskLevel === "High Risk" && "This email is highly likely to be a malicious attempt."}
               </p>
             </div>
+          </Card>
+
+          <Card className="glass border-border/50">
+            <CardHeader>
+              <CardTitle>Quick Security Toolkit</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                <div className="rounded-2xl bg-background/50 border border-border/50 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Sender Domain</p>
+                  <p className="mt-2 text-sm text-white font-medium">{parsedData.senderDomain}</p>
+                </div>
+                <div className="rounded-2xl bg-background/50 border border-border/50 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Shortened URLs</p>
+                  <p className="mt-2 text-sm text-white font-medium">{analysisResult.shortenedUrlCount}</p>
+                </div>
+                <div className="rounded-2xl bg-background/50 border border-border/50 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">IP-based Links</p>
+                  <p className="mt-2 text-sm text-white font-medium">{analysisResult.ipUrlCount}</p>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-3">
+              <Button onClick={copyReport} variant="secondary" className="w-full bg-slate-700 hover:bg-slate-600 text-white">
+                <Copy className="mr-2 h-4 w-4" /> Copy JSON Report
+              </Button>
+              <Button onClick={downloadReport} className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                <DownloadCloud className="mr-2 h-4 w-4" /> Download JSON Report
+              </Button>
+            </CardFooter>
           </Card>
 
           <Card className="glass border-border/50">

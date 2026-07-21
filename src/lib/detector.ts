@@ -1,11 +1,17 @@
-import { ParsedEmail } from "./parser";
+import type { ParsedEmail } from "./parser"
 
 export interface AnalysisResult {
-  score: number; // 0 to 100
+  score: number;
   riskLevel: "Safe" | "Suspicious" | "High Risk";
   reasons: string[];
   recommendations: string[];
+  senderDomain: string;
+  shortenedUrlCount: number;
+  ipUrlCount: number;
+  suspiciousDomainMismatch: boolean;
 }
+
+// existing detector code below
 
 // Heuristic keyword weights (Word: Risk Score)
 const URGENCY_KEYWORDS = [
@@ -69,13 +75,29 @@ export function analyzeEmail(email: ParsedEmail): AnalysisResult {
     score += 10;
     reasons.push(`Email contains a high number of links (${email.urls.length}).`);
   }
-  
-  // Check for shortened URLs (simple heuristic)
+
   const shortenedDomains = ["bit.ly", "tinyurl.com", "t.co", "ow.ly"];
-  const hasShortenedUrls = email.domains.some(domain => shortenedDomains.includes(domain));
-  if (hasShortenedUrls) {
+  const shortenedUrlCount = email.domains.filter((domain: string) => shortenedDomains.includes(domain)).length;
+  if (shortenedUrlCount > 0) {
     score += 30;
-    reasons.push("Contains shortened URLs, which are frequently used to hide malicious destinations.");
+    reasons.push(`Contains ${shortenedUrlCount} shortened URL${shortenedUrlCount > 1 ? "s" : ""}, which often hide malicious destinations.`);
+  }
+
+  const ipUrlCount = email.ipUrls.length;
+  if (ipUrlCount > 0) {
+    score += 25;
+    reasons.push(`Contains ${ipUrlCount} direct IP-based link${ipUrlCount > 1 ? "s" : ""}, a strong phishing indicator.`);
+  }
+
+  const suspiciousDomainMismatch =
+    email.senderDomain !== "unknown" &&
+    email.senderDomain !== "" &&
+    email.domains.length > 0 &&
+    !email.domains.some((domain) => domain === email.senderDomain);
+
+  if (suspiciousDomainMismatch && email.urls.length > 0) {
+    score += 10;
+    reasons.push("Sender domain does not match any linked domains in the email, which can indicate impersonation or spoofing.");
   }
 
   // 3. Formatting Anomalies
@@ -114,6 +136,10 @@ export function analyzeEmail(email: ParsedEmail): AnalysisResult {
     score,
     riskLevel,
     reasons,
-    recommendations
+    recommendations,
+    senderDomain: email.senderDomain,
+    shortenedUrlCount,
+    ipUrlCount,
+    suspiciousDomainMismatch,
   };
 }
