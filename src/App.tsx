@@ -17,6 +17,7 @@ import { Login } from "@/pages/Login"
 import { Signup } from "@/pages/Signup"
 import { Dashboard } from "@/pages/Dashboard"
 import { AnalysisView } from "@/pages/AnalysisView"
+import { NotFound } from "@/pages/NotFound"
 
 
 function App() {
@@ -67,6 +68,7 @@ function App() {
 
           <Route path="contact" element={<Contact />} />
 
+          <Route path="*" element={<NotFound />} />
 
         </Route>
 

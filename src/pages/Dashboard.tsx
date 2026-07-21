@@ -99,9 +99,6 @@ export function Dashboard() {
 				throw analysisError
 			}
 
-			// Log raw data for debugging (will appear in browser console)
-			if (analysisData) console.debug("supabase: analysisData", analysisData)
-
 			// Normalize rows to expected DB column names in case of casing differences
 			const normalized = (analysisData ?? []).map((row: any) => ({
 				id: String(row.id ?? ""),
@@ -175,10 +172,15 @@ export function Dashboard() {
 	}, [analysisHistory, query, filterLevel, sortBy])
 
 	const deleteAnalysis = async (id: string) => {
+		if (!user) return
 		if (!confirm("Delete this analysis? This action cannot be undone.")) return
 
 		try {
-			const { error } = await supabase.from("email_analysis").delete().eq("id", id)
+			const { error } = await supabase
+				.from("email_analysis")
+				.delete()
+				.eq("id", id)
+				.eq("user_id", user.id)
 			if (error) {
 				console.error(error)
 				alert("Unable to delete analysis")
