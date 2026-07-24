@@ -14,6 +14,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Mail, Lock, ShieldCheck } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export function Login() {
   const navigate = useNavigate()
   const { user, loading, signIn, signInWithGitHub } = useAuth()
@@ -31,15 +33,23 @@ export function Login() {
   async function handleLogin() {
     setFormError(null)
 
+    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedPassword = password;
+
     if (!email.trim() || !password.trim()) {
       setFormError("Please enter your email and password.")
+      return
+    }
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setFormError("Please enter a valid email address.")
       return
     }
 
     setIsSubmitting(true)
 
     try {
-      await signIn(email, password)
+      await signIn(normalizedEmail, normalizedPassword)
       navigate("/dashboard")
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Login failed.")

@@ -41,16 +41,20 @@ export function Dashboard() {
 	const [sortBy, setSortBy] = useState<"newest"|"oldest"|"highest">("newest")
 
 	const exportHistoryCsv = () => {
+		const escapeCsvCell = (value: string) => {
+			const safeValue = String(value ?? "").replace(/\r?\n/g, " ").replace(/"/g, '""');
+			return `"${/^[=+\-@]/.test(safeValue) ? `'` : ``}${safeValue}"`;
+		};
 		const headers = ["Subject", "Sender", "Risk Level", "Score", "Date"]
 		const csvRows = [headers.join(",")]
 
 		analysisHistory.forEach((item) => {
 			const row = [
-				`"${item.subject.replace(/"/g, '""')}"`,
-				`"${item.sender.replace(/"/g, '""')}"`,
-				`"${item.level}"`,
+				escapeCsvCell(item.subject),
+				escapeCsvCell(item.sender),
+				escapeCsvCell(item.level),
 				item.risk_score.toString(),
-				`"${item.created_at ?? ""}"`,
+				escapeCsvCell(item.created_at ?? ""),
 			]
 			csvRows.push(row.join(","))
 		})

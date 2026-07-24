@@ -13,6 +13,8 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { User, Mail, Lock } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const MIN_PASSWORD_LENGTH = 8
 
 export function Signup() {
   const navigate = useNavigate()
@@ -33,8 +35,26 @@ export function Signup() {
   async function createAccount() {
     setFormError(null)
 
+    const normalizedFullName = fullName.trim()
+    const normalizedEmail = email.trim().toLowerCase()
+
     if (!fullName.trim() || !email.trim() || !password || !confirmPassword) {
       setFormError("Please complete all fields.")
+      return
+    }
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setFormError("Please enter a valid email address.")
+      return
+    }
+
+    if (normalizedFullName.length < 2) {
+      setFormError("Please enter your full name.")
+      return
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setFormError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`)
       return
     }
 
@@ -48,6 +68,7 @@ export function Signup() {
     try {
       await signUp(email, password)
       navigate("/dashboard")
+      await signUp(normalizedEmail, password)
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Signup failed.")
     } finally {
@@ -79,9 +100,10 @@ export function Signup() {
               <label className="text-sm font-medium text-muted-foreground">Full name</label>
               <Input
                 value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
+                onChange={(event) => setFullName(event.target.value.slice(0, 50))}
                 placeholder="Jane Doe"
                 className="bg-white/5 text-white placeholder:text-muted-foreground"
+                maxLength={50}
               />
             </div>
             <div className="space-y-3">
@@ -91,9 +113,10 @@ export function Signup() {
                 <Input
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => setEmail(event.target.value.slice(0, 254))}
                   placeholder="you@example.com"
                   className="bg-transparent border-0 px-0 text-white placeholder:text-muted-foreground focus-visible:ring-0"
+                  maxLength={254}
                 />
               </div>
             </div>
@@ -105,9 +128,10 @@ export function Signup() {
                   <Input
                     type="password"
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(event) => setPassword(event.target.value.slice(0, 128))}
                     placeholder="Password"
                     className="bg-transparent border-0 px-0 text-white placeholder:text-muted-foreground focus-visible:ring-0"
+                    maxLength={128}
                   />
                 </div>
               </div>
@@ -116,9 +140,10 @@ export function Signup() {
                 <Input
                   type="password"
                   value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  onChange={(event) => setConfirmPassword(event.target.value.slice(0, 128))}
                   placeholder="Confirm password"
                   className="bg-white/5 text-white placeholder:text-muted-foreground"
+                  maxLength={128}
                 />
               </div>
             </div>
