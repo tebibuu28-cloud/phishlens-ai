@@ -30,31 +30,45 @@ export function Login() {
     }
   }, [loading, user, navigate])
 
-  async function handleLogin() {
-    setFormError(null)
+  const [attemptCount, setAttemptCount] = useState(0);
+  const maxAttempts = 5;
 
-    const normalizedEmail = email.trim().toLowerCase()
+  async function handleLogin() {
+    setFormError(null);
+
+    // Basic client‑side throttling – lock out after too many attempts
+    if (attemptCount >= maxAttempts) {
+      setFormError('Too many login attempts. Please try again later.');
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password;
 
     if (!email.trim() || !password.trim()) {
-      setFormError("Please enter your email and password.")
-      return
+      setFormError('Please fill in both email and password.');
+      return;
     }
 
     if (!EMAIL_REGEX.test(normalizedEmail)) {
-      setFormError("Please enter a valid email address.")
-      return
+      setFormError('Please enter a valid email address.');
+      return;
     }
 
-    setIsSubmitting(true)
+    setIsSubmitting(true);
 
     try {
-      await signIn(normalizedEmail, normalizedPassword)
-      navigate("/dashboard")
+      await signIn(normalizedEmail, normalizedPassword);
+      // Reset attempts on successful login
+      setAttemptCount(0);
+      navigate('/dashboard');
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Login failed.")
+      // Use a generic message to avoid leaking internal details
+      setFormError('Login failed. Please check your credentials.');
+      console.error('Login error:', error);
+      setAttemptCount((c) => c + 1);
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }
 

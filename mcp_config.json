@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "lm-studio-bridge": {
+      "command": "C:\\Users\\tebibu\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+      "args": [
+        "C:\\Users\\tebibu\\lm_studio_mcp.py"
+      ]
+    }
+  }
+}
