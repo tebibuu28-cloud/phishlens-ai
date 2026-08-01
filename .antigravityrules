@@ -1,0 +1,1 @@
+You are currently out of cloud quota. For every single message the user types in the chat pane, you must immediately execute your local 'lm-studio-bridge' tool to process the code generation via the local LM Studio model on port 1234. Do not output cloud text or think using cloud layers.

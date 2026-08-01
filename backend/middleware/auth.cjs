@@ -4,7 +4,6 @@ const { createClient } = require("@supabase/supabase-js");
 require("dotenv").config();
 
 
-// Supabase admin client
 const supabaseAdmin = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -12,48 +11,25 @@ const supabaseAdmin = createClient(
 
 
 
-/**
- * Verify Supabase JWT
- *
- * Supports:
- * 1. Authorization header:
- *    Bearer eyJ...
- *
- * 2. HttpOnly cookie:
- *    session_token
- */
 async function verifyJwt(req, res, next) {
 
-    let token = null;
+
+    let token;
 
 
-    // --------------------------------
-    // Method 1: Authorization Header
-    // --------------------------------
-
+    // Check Authorization header first
     const authHeader = req.headers.authorization;
 
 
-    if (
-        authHeader &&
-        authHeader.startsWith("Bearer ")
-    ) {
+    if (authHeader && authHeader.startsWith("Bearer ")) {
 
         token = authHeader.split(" ")[1];
 
     }
 
 
-
-    // --------------------------------
-    // Method 2: Cookie Authentication
-    // --------------------------------
-
-    if (
-        !token &&
-        req.cookies &&
-        req.cookies.session_token
-    ) {
+    // Fallback to cookie
+    if (!token && req.cookies.session_token) {
 
         token = req.cookies.session_token;
 
@@ -61,15 +37,10 @@ async function verifyJwt(req, res, next) {
 
 
 
-    // No token found
-
     if (!token) {
 
         return res.status(401).json({
-
-            error:
-            "Missing authentication token"
-
+            error:"Missing authentication token"
         });
 
     }
@@ -79,46 +50,31 @@ async function verifyJwt(req, res, next) {
     try {
 
 
-        // Verify token with Supabase
-
         const {
-
             data,
             error
-
-        } = await supabaseAdmin.auth.getUser(
-            token
-        );
+        } = await supabaseAdmin.auth.getUser(token);
 
 
 
-        if (
-            error ||
-            !data.user
-        ) {
+        if(error || !data.user){
 
             return res.status(401).json({
-
-                error:
-                "Invalid or expired token"
-
+                error:"Invalid or expired token"
             });
 
         }
 
 
 
-        // Attach user to request
-
         req.user = data.user;
-
 
 
         next();
 
 
 
-    } catch (err) {
+    } catch(err){
 
 
         console.error(
@@ -128,11 +84,9 @@ async function verifyJwt(req, res, next) {
 
 
         return res.status(401).json({
-
-            error:
-            "Authentication failed"
-
+            error:"Invalid token"
         });
+
 
     }
 

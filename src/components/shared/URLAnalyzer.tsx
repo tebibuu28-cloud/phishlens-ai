@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Globe, Search, Sparkles, ShieldAlert, CheckCircle2, ArrowRight } from "lucide-react";
+import { Globe, Search, Sparkles, ShieldAlert, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 
 const MAX_URL_INPUT_LENGTH = 1000;
 
@@ -16,6 +16,7 @@ import { analyzeURL } from "@/lib/urlAnalyzer";
 import { DEMO_URLS, type DemoURL } from "@/lib/demoUrls";
 import { URLAnalysisResultView } from "./URLAnalysisResult";
 import type { URLAnalysisResult } from "@/lib/urlTypes";
+import { saveAnalysisHistory } from "@/lib/history";
 
 const urlSchema = z.object({
   urlInput: z.string()
@@ -29,6 +30,7 @@ const urlSchema = z.object({
 
 export function URLAnalyzer() {
   const [analysisResult, setAnalysisResult] = useState<URLAnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const form = useForm<z.infer<typeof urlSchema>>({
     resolver: zodResolver(urlSchema),
@@ -37,15 +39,60 @@ export function URLAnalyzer() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof urlSchema>) {
-    const res = analyzeURL(values.urlInput);
-    setAnalysisResult(res);
+  async function onSubmit(values: z.infer<typeof urlSchema>) {
+    console.log("ANALYSIS START");
+    setIsAnalyzing(true);
+    try {
+      // Simulate visual delay for analyzing
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const res = analyzeURL(values.urlInput);
+      console.log("ANALYSIS COMPLETE");
+      // Save URL analysis to backend history BEFORE updating state
+      await saveAnalysisHistory({
+        type: 'url',
+        target: values.urlInput,
+        risk_score: res.riskScore,
+        risk_level: res.riskLevel,
+        threats: res.threatCategories,
+      });
+      setAnalysisResult(res);
+    } catch (e) {
+      console.error('[URLAnalyzer] Failed to save URL analysis history:', e);
+      if (e instanceof Error) {
+        console.error("Stack Trace:", e.stack);
+      }
+      alert(`Failed to save analysis history: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
-  function handleRunDemo(demo: DemoURL) {
+  async function handleRunDemo(demo: DemoURL) {
+    console.log("ANALYSIS START");
     form.setValue("urlInput", demo.url);
-    const res = analyzeURL(demo.url);
-    setAnalysisResult(res);
+    setIsAnalyzing(true);
+    try {
+      // Simulate visual delay for analyzing
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const res = analyzeURL(demo.url);
+      console.log("ANALYSIS COMPLETE");
+      await saveAnalysisHistory({
+        type: 'url',
+        target: demo.url,
+        risk_score: res.riskScore,
+        risk_level: res.riskLevel,
+        threats: res.threatCategories,
+      });
+      setAnalysisResult(res);
+    } catch (e) {
+      console.error('[URLAnalyzer] Failed to save demo URL analysis history:', e);
+      if (e instanceof Error) {
+        console.error("Stack Trace:", e.stack);
+      }
+      alert(`Failed to save analysis history: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
   return (
@@ -55,7 +102,15 @@ export function URLAnalyzer() {
       ) : (
         <div className="space-y-8">
           {/* Main Input Form Card */}
-          <Card className="glass border-border/60 shadow-2xl overflow-hidden max-w-4xl mx-auto">
+          <Card className="glass border-border/60 shadow-2xl overflow-hidden max-w-4xl mx-auto relative">
+            {isAnalyzing && (
+              <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center space-y-3 animate-in fade-in duration-200">
+                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+                <p className="text-sm font-semibold text-white">Evaluating Link & Lookalike Risk...</p>
+                <p className="text-xs text-muted-foreground">Checking brand typosquatting, shorteners, and keyword heuristics</p>
+              </div>
+            )}
+
             <CardHeader className="pb-3 border-b border-border/40">
               <CardTitle className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <Globe className="w-5 h-5 text-blue-400" /> Analyze Web Link or Domain
@@ -89,8 +144,16 @@ export function URLAnalyzer() {
                   />
 
                   <div className="flex justify-end pt-2">
-                    <Button type="submit" size="lg" className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm">
-                      <Search className="mr-2 w-4 h-4" /> Analyze Link
+                    <Button type="submit" disabled={isAnalyzing} size="lg" className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm">
+                      {isAnalyzing ? (
+                        <>
+                          <Loader2 className="mr-2 w-4 h-4 animate-spin" /> Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="mr-2 w-4 h-4" /> Analyze Link
+                        </>
+                      )}
                     </Button>
                   </div>
                 </form>
@@ -143,6 +206,7 @@ export function URLAnalyzer() {
                   <CardFooter className="p-4 pt-2">
                     <Button
                       onClick={() => handleRunDemo(demo)}
+                      disabled={isAnalyzing}
                       variant="outline"
                       size="sm"
                       className="w-full bg-background/50 hover:bg-blue-600 hover:text-white border-border/60 text-xs font-semibold"

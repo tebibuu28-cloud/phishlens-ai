@@ -6,29 +6,52 @@ import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 import type { Database } from "@/lib/database"
 
-type AnalysisRow = Database["public"]["Tables"]["email_analysis"]["Row"]
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"]
+type DisplayHistoryRow = {
+	id: string
+	user_id: string
+	type: "email" | "url"
+	target: string
+	risk_score: number
+	risk_level: "low" | "medium" | "high"
+	threats: string[]
+	result?: unknown
+	created_at: string | null
+}
 
 export function Dashboard() {
-	const { user } = useAuth()
+	const { user, session } = useAuth()
 	const [profile, setProfile] = useState<ProfileRow | null>(null)
-	const [analysisHistory, setAnalysisHistory] = useState<AnalysisRow[]>([])
+	const [analysisHistory, setAnalysisHistory] = useState<DisplayHistoryRow[]>([])
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
 
+	const normalizeDisplayValue = (value: unknown) => {
+		if (value === null || value === undefined) return ""
+		if (Array.isArray(value)) return value.map((item) => String(item)).join(", ")
+		if (typeof value === "object") return JSON.stringify(value, null, 2)
+		return String(value)
+	}
+
+	const truncateText = (value: string, length = 80) =>
+		value.length > length ? `${value.slice(0, length)}...` : value
+
 	const totalAnalyses = analysisHistory.length
-	const highCount = analysisHistory.filter((a) => a.level === "high").length
-	const mediumCount = analysisHistory.filter((a) => a.level === "medium").length
-	const safeCount = analysisHistory.filter((a) => a.level === "low").length
+	const highCount = analysisHistory.filter((a) => a.risk_level === "high").length
+	const mediumCount = analysisHistory.filter((a) => a.risk_level === "medium").length
+	const safeCount = analysisHistory.filter((a) => a.risk_level === "low").length
 	const avgRisk = analysisHistory.length > 0 ? Math.round((analysisHistory.reduce((s, a) => s + (a.risk_score ?? 0), 0) / analysisHistory.length) * 10) / 10 : 0
 
 	const topSenderDomainCounts = analysisHistory.reduce<Record<string, number>>((acc, item) => {
-		const match = item.sender.match(/@(.+)$/)
-		const domain = match?.[1]?.toLowerCase() ?? "unknown"
+		if (item.type === 'url') {
+			const match = item.target.match(/^https?:\/\/([^/?#]+)/i)
+			const domain = match?.[1]?.toLowerCase() ?? item.target.toLowerCase()
+			if (!domain) return acc
+			acc[domain] = (acc[domain] ?? 0) + 1
+			return acc
+		}
 
-		if (!domain) return acc
-
-		acc[domain] = (acc[domain] ?? 0) + 1
+		acc['Email Scans'] = (acc['Email Scans'] ?? 0) + 1
 		return acc
 	}, {})
 
@@ -45,14 +68,15 @@ export function Dashboard() {
 			const safeValue = String(value ?? "").replace(/\r?\n/g, " ").replace(/"/g, '""');
 			return `"${/^[=+\-@]/.test(safeValue) ? `'` : ``}${safeValue}"`;
 		};
-		const headers = ["Subject", "Sender", "Risk Level", "Score", "Date"]
-		const csvRows = [headers.join(",")]
+const headers = ["Type", "Target", "Risk Level", "Threats", "Score", "Date"]
+	const csvRows = [headers.join(",")]
 
-		analysisHistory.forEach((item) => {
-			const row = [
-				escapeCsvCell(item.subject),
-				escapeCsvCell(item.sender),
-				escapeCsvCell(item.level),
+	analysisHistory.forEach((item) => {
+		const row = [
+			escapeCsvCell(item.type),
+			escapeCsvCell(item.target),
+			escapeCsvCell(item.risk_level),
+			escapeCsvCell(item.threats.join(", ")),
 				item.risk_score.toString(),
 				escapeCsvCell(item.created_at ?? ""),
 			]
@@ -70,62 +94,74 @@ export function Dashboard() {
 		URL.revokeObjectURL(url)
 	}
 
-	const fetchDashboard = async () => {
-		if (!user) {
-			setLoading(false)
-			return
-		}
+	  const fetchDashboard = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-		setLoading(true)
-		setError(null)
+    setLoading(true);
+    setError(null);
 
-		try {
-			const { data: profileData, error: profileError } = await supabase
-				.from("profiles")
-				.select("email,created_at")
-				.eq("id", user.id)
-				.single()
+    try {
+      // Fetch profile as before
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('email,created_at')
+        .eq('id', user.id)
+        .single();
 
-			if (profileError) {
-				console.error(profileError)
-				throw profileError
-			}
+      if (profileError) {
+        console.error(profileError);
+        throw profileError;
+      }
 
-			const { data: analysisData, error: analysisError } = await supabase
-				.from("email_analysis")
-				.select("id,sender,subject,level,risk_score,created_at")
-				.eq("user_id", user.id)
-				.order("created_at", { ascending: false })
-				.limit(50)
+      // Fetch analysis history via backend API
+      const resp = await fetch('/api/history', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+        }
+      });
+      // Read raw response text first to guard against empty bodies
+      const respText = await resp.text();
+      if (!respText) {
+        throw new Error('Empty response from server');
+      }
+      let respData;
+      try {
+        respData = JSON.parse(respText);
+      } catch (e) {
+        throw new Error('Invalid JSON response from server');
+      }
+      if (!resp.ok) {
+        throw new Error(respData.error || 'Failed to fetch history');
+      }
+      const { history } = respData;
 
-			if (analysisError) {
-				console.error(analysisError)
-				throw analysisError
-			}
+      // Normalize rows to common shape used by UI
+      const normalized = (history ?? []).map((row:any) => ({
+        id: String(row.id ?? ''),
+        user_id: String(row.user_id ?? ''),
+        type: row.type === 'url' ? 'url' : 'email',
+        target: normalizeDisplayValue(row.target),
+        risk_score: Number(row.risk_score ?? 0),
+        risk_level: ['low', 'medium', 'high'].includes(row.risk_level) ? row.risk_level : 'low',
+		threats: Array.isArray(row.threats) ? row.threats.map((t: any) => (typeof t === 'string' ? t : JSON.stringify(t))) : [],
+        result: row.result,
+        created_at: row.created_at ?? null,
+      })) as DisplayHistoryRow[];
 
-			// Normalize rows to expected DB column names in case of casing differences
-			const normalized = (analysisData ?? []).map((row: any) => ({
-				id: String(row.id ?? ""),
-				user_id: String(row.user_id ?? row.userId ?? user.id ?? ""),
-				sender: String(row.sender ?? row.from ?? row.sender_email ?? ""),
-				subject: String(row.subject ?? row.Subject ?? row.title ?? ""),
-				body: String(row.body ?? row.Body ?? ""),
-				risk_score: Number(row.risk_score ?? row.riskScore ?? row.score ?? 0),
-				level: (row.level ?? row.Level ?? row.risk_level ?? row.riskLevel ?? "low") as "low" | "medium" | "high",
-				reasons: row.reasons ?? row.Reasons ?? [],
-				recommendations: row.recommendations ?? row.Recommendations ?? [],
-				created_at: row.created_at ?? row.createdAt ?? row.createdAtTs ?? null,
-			})) as AnalysisRow[]
-
-			setProfile(profileData)
-			setAnalysisHistory(normalized)
-		} catch (err) {
-			console.error(err)
-			setError(err instanceof Error ? err.message : String(err))
-		} finally {
-			setLoading(false)
-		}
-	}
+      setProfile(profileData);
+      setAnalysisHistory(normalized);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
 	useEffect(() => {
 		void fetchDashboard()
@@ -136,10 +172,10 @@ export function Dashboard() {
 		if (!user) return
 
 		const channel = supabase
-			.channel("email-analysis")
+			.channel("analysis-history")
 			.on(
 				"postgres_changes",
-				{ event: "INSERT", schema: "public", table: "email_analysis", filter: `user_id=eq.${user.id}` },
+				{ event: "INSERT", schema: "public", table: "analysis_history", filter: `user_id=eq.${user.id}` },
 				() => {
 					void fetchDashboard()
 				}
@@ -157,11 +193,15 @@ export function Dashboard() {
 
 		if (query.trim()) {
 			const q = query.toLowerCase()
-			out = out.filter((r) => (r.subject ?? "").toLowerCase().includes(q) || (r.sender ?? "").toLowerCase().includes(q))
+			out = out.filter((r) =>
+				r.target.toLowerCase().includes(q)
+				|| r.type.toLowerCase().includes(q)
+				|| r.threats.some((threat) => threat.toLowerCase().includes(q))
+			)
 		}
 
 		if (filterLevel !== "all") {
-			out = out.filter((r) => r.level === filterLevel)
+			out = out.filter((r) => r.risk_level === filterLevel)
 		}
 
 		if (sortBy === "newest") {
@@ -221,8 +261,8 @@ export function Dashboard() {
 					<p className="text-sm uppercase tracking-[0.3em] text-blue-400">Dashboard</p>
 					<h1 className="mt-3 text-4xl font-bold text-white">Welcome back, {userEmail.split("@")[0]}.</h1>
 					<p className="mt-3 max-w-2xl text-muted-foreground">Your PhishLens AI account stores your email scans securely.</p>
-				</div>
-				<Button asChild className="w-full max-w-xs bg-blue-600 hover:bg-blue-700 text-white">
+					</div>
+					<Button asChild className="w-full max-w-xs bg-blue-600 hover:bg-blue-700 text-white">
 					<Link to="/analyzer">Analyze New Email</Link>
 				</Button>
 			</div>
@@ -245,7 +285,7 @@ export function Dashboard() {
 					type="text"
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
-					placeholder="Search subject or sender"
+					placeholder="Search target, threats, or type"
 					className="w-full max-w-md bg-background/50 border border-border/50 rounded px-3 py-2 text-sm text-white"
 				/>
 				<div className="flex gap-2">
@@ -287,7 +327,7 @@ export function Dashboard() {
 			<div className="glass rounded-2xl border border-white/10 p-6 lg:col-span-2">
 				<div className="flex items-center justify-between">
 					<div>
-						<p className="text-sm uppercase tracking-[0.25em] text-muted-foreground">Top Sender Domains</p>
+						<p className="text-sm uppercase tracking-[0.25em] text-muted-foreground">Top Scan Sources</p>
 						<h2 className="mt-2 text-2xl font-semibold text-white">Most frequent sources</h2>
 					</div>
 					<ShieldCheck className="h-6 w-6 text-blue-400" />
@@ -383,8 +423,7 @@ export function Dashboard() {
 								<table className="w-full table-auto text-left">
 									<thead>
 										<tr className="text-sm text-muted-foreground">
-											<th className="py-3 px-4">Email Subject</th>
-											<th className="py-3 px-4">Risk</th>
+											<th className="py-3 px-4">Scan Summary</th>
 											<th className="py-3 px-4">Score</th>
 											<th className="py-3 px-4">Date</th>
 								<th className="py-3 px-4">Actions</th>
@@ -394,13 +433,8 @@ export function Dashboard() {
 										{filteredSortedHistory.map((item) => (
 											<tr key={item.id} className="hover:bg-white/2">
 												<td className="py-3 px-4">
-													<div className="text-sm font-medium text-white">{item.subject}</div>
-													<div className="text-xs text-muted-foreground">{item.sender}</div>
-												</td>
-												<td className="py-3 px-4">
-													<span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${item.level === "high" ? "bg-red-500/20 text-red-300" : item.level === "medium" ? "bg-amber-500/20 text-amber-300" : "bg-green-500/20 text-emerald-300"}`}>
-														{item.level === "high" ? "High" : item.level === "medium" ? "Medium" : "Low"}
-													</span>
+													<div className="text-sm font-medium text-white" title={item.target}>{truncateText(item.target, 80)}</div>
+													<div className="text-xs text-muted-foreground">Risk: {item.risk_level.charAt(0).toUpperCase() + item.risk_level.slice(1)}{item.threats.length > 0 ? ` • Threats: ${item.threats.join(", ")}` : " • Threats: None"}</div>
 												</td>
 												<td className="py-3 px-4 text-sm text-muted-foreground">{item.risk_score}</td>
 												<td className="py-3 px-4 text-sm text-muted-foreground">{item.created_at ? new Date(item.created_at).toLocaleString() : "Unknown"}</td>

@@ -57,6 +57,7 @@ import { parseEmail } from "@/lib/parser";
 import { analyzeEmail } from "@/lib/detector";
 import { DEMO_SAMPLES, type DemoSample } from "@/lib/demoSamples";
 import { URLAnalyzer } from "@/components/shared/URLAnalyzer";
+import { saveAnalysisHistory } from "@/lib/history";
 
 const textSchema = z.object({
   content: z.string()
@@ -86,7 +87,8 @@ export function Analyzer() {
   const contentValue = textForm.watch("content");
   const charCount = contentValue ? contentValue.length : 0;
 
-  function processAnalysis(content: string) {
+  async function processAnalysis(content: string) {
+    console.log("ANALYSIS START");
     const trimmedContent = content.trim();
     if (trimmedContent.length > MAX_EMAIL_INPUT_LENGTH) {
       textForm.setError("content", {
@@ -97,17 +99,35 @@ export function Analyzer() {
     }
 
     setIsAnalyzing(true);
-    setTimeout(() => {
+    try {
+      // Simulate analysis delay
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
       const parsedData = parseEmail(trimmedContent);
       const analysisResult = analyzeEmail(parsedData);
+      console.log("ANALYSIS COMPLETE");
+
+      // Save history BEFORE navigating away
+      await saveAnalysisHistory({
+        type: "email",
+        target: trimmedContent,
+        risk_score: analysisResult.score,
+        risk_level: analysisResult.riskLevel,
+        threats: analysisResult.threatCategory ? [analysisResult.threatCategory] : [],
+      });
+
       setIsAnalyzing(false);
       navigate("/results", {
-        state: {
-          parsedData,
-          analysisResult,
-        },
+        state: { parsedData, analysisResult },
       });
-    }, 400);
+    } catch (e) {
+      console.error("[Analyzer] Failed to save email history:", e);
+      if (e instanceof Error) {
+        console.error("Stack Trace:", e.stack);
+      }
+      setIsAnalyzing(false);
+      alert(`Failed to save analysis history: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   function onTextSubmit(values: z.infer<typeof textSchema>) {

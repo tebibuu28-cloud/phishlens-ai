@@ -13,6 +13,19 @@ export function AnalysisView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const renderValue = (value: unknown) => {
+    if (value === null || value === undefined) return ""
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => (typeof item === "string" ? item : JSON.stringify(item, null, 2)))
+        .join("\n")
+    }
+    if (typeof value === "object") {
+      return JSON.stringify(value, null, 2)
+    }
+    return String(value)
+  }
+
   useEffect(() => {
     if (!id) return
 
@@ -145,7 +158,7 @@ export function AnalysisView() {
           <CardTitle>AI Explanation</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">{(analysis.reasons && analysis.reasons.length > 0) ? analysis.reasons.join(" \n") : "No detailed reasons provided."}</p>
+          <p className="text-sm text-muted-foreground">{(analysis.reasons && analysis.reasons.length > 0) ? renderValue(analysis.reasons) : "No detailed reasons provided."}</p>
         </CardContent>
       </Card>
 
@@ -156,7 +169,7 @@ export function AnalysisView() {
         <CardContent>
           <ul className="list-disc list-inside text-muted-foreground">
             {(analysis.recommendations || []).map((r: any, i: number) => (
-              <li key={i}>{r}</li>
+              <li key={i}>{renderValue(r)}</li>
             ))}
           </ul>
         </CardContent>
@@ -171,16 +184,16 @@ export function AnalysisView() {
             <div>
               <p className="text-sm text-muted-foreground">Domains</p>
               <div className="flex flex-wrap gap-2 mt-2">
-                {(analysis.domains || []).map((d: string, i: number) => (
-                  <span key={i} className="bg-background/50 px-2 py-1 rounded text-xs font-mono">{d}</span>
+                {(analysis.domains || []).map((d: any, i: number) => (
+                  <span key={i} className="bg-background/50 px-2 py-1 rounded text-xs font-mono">{renderValue(d)}</span>
                 ))}
               </div>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Links</p>
               <div className="mt-2 space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                {(analysis.urls || []).map((u: string, i: number) => (
-                  <div key={i} className="bg-background/50 p-2 rounded font-mono text-xs break-all">{u}</div>
+                {(analysis.urls || []).map((u: any, i: number) => (
+                  <div key={i} className="bg-background/50 p-2 rounded font-mono text-xs break-all">{renderValue(u)}</div>
                 ))}
               </div>
             </div>

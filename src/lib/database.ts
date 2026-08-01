@@ -52,7 +52,39 @@ export interface Database {
           reasons?: Json
           recommendations?: Json
         }
-      }
+      },
+          analysis_history: {
+            Row: {
+              id: string;
+              user_id: string;
+              type: string;
+              target: string;
+              risk_score: number;
+              risk_level: "low" | "medium" | "high";
+              threats: Json;
+              result: Json;
+              created_at: string | null;
+            };
+            Insert: {
+              user_id: string;
+              type: string;
+              target: string;
+              risk_score: number;
+              risk_level: "low" | "medium" | "high";
+              threats: Json;
+              result: Json;
+            };
+            Update: {
+              id?: string;
+              user_id?: string;
+              type?: string;
+              target?: string;
+              risk_score?: number;
+              risk_level?: "low" | "medium" | "high";
+              threats?: Json;
+              result?: Json;
+            };
+          }
     }
     Views: {}
     Functions: {}
