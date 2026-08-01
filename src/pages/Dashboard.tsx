@@ -221,7 +221,7 @@ const headers = ["Type", "Target", "Risk Level", "Threats", "Score", "Date"]
 
 		try {
 			const { error } = await supabase
-				.from("email_analysis")
+				.from("analysis_history")
 				.delete()
 				.eq("id", id)
 				.eq("user_id", user.id)
