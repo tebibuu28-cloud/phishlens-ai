@@ -266,30 +266,6 @@ app.post(
     try{
 
 
-        const {
-            error
-        } = await supabaseAdmin
-        .from("analysis_history")
-        .insert({
-
-            user_id: req.user.id,
-            type,
-            target,
-            risk_score,
-            risk_level,
-            threats
-
-        });
-
-
-
-        if(error){
-
-            throw error;
-
-        }
-
-
         const insertData = {
             user_id: req.user.id,
             type,
@@ -301,13 +277,13 @@ app.post(
 
         console.log('SUPABASE INSERT:', JSON.stringify(insertData, null, 2));
 
-        const { data: inserted, error } = await supabaseAdmin
+        const { data: inserted, error: insertError } = await supabaseAdmin
             .from("analysis_history")
             .insert(insertData)
             .select();
 
-        if (error) {
-            throw error;
+        if (insertError) {
+            throw insertError;
         }
 
         console.log('SUPABASE INSERT RESPONSE:', JSON.stringify(inserted, null, 2));
@@ -317,6 +293,22 @@ app.post(
             inserted: inserted ?? null
         });
 
+    } catch(err){
+
+        console.error("History save error:", err);
+        if (process.env.NODE_ENV !== "production") {
+            const { message, code, details, hint } = err;
+            return res.status(500).json({
+                error: "Failed to save history",
+                debug: { message, code, details, hint }
+            });
+        }
+
+        res.status(500).json({ error: "Failed to save history" });
+
+    }
+
+});
 
 
 // ==============================
